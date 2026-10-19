@@ -1,17 +1,20 @@
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, status
+
+from app.dependencies.auth import require_admin, verify_api_key
 from app.schemas.room import RoomCreate, RoomResponse
+from app.services.room_service import (
+    create_new_room,
+    get_all_rooms,
+    get_room_by_id,
+)
 
 router = APIRouter()
-
-# Penyimpanan sementara untuk latihan
-rooms: list[RoomResponse] = []
-next_room_id = 1
 
 
 @router.get("/", response_model=list[RoomResponse])
 def get_rooms():
-    return rooms
+    return get_all_rooms()
 
 
 @router.post(
@@ -19,28 +22,14 @@ def get_rooms():
     response_model=RoomResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_room(room: RoomCreate):
-    global next_room_id
-
-    # Membuat ID otomatis
-    new_room = RoomResponse(
-        id=next_room_id,
-        **room.model_dump(),
-    )
-
-    rooms.append(new_room)
-    next_room_id += 1
-
-    return new_room
+def create_room(
+    room: RoomCreate,
+    role: str = Depends(verify_api_key),
+):
+    require_admin(role)
+    return create_new_room(room)
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
 def get_room(room_id: int):
-    for room in rooms:
-        if room.id == room_id:
-            return room
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Ruangan tidak ditemukan",
-    )
+    return get_room_by_id(room_id)

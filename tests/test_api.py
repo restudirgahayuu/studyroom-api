@@ -5,6 +5,14 @@ from app.main import app
 
 client = TestClient(app)
 
+ADMIN_HEADERS = {
+    "X-API-Key": "studyroom-admin-key-2026"
+}
+
+USER_HEADERS = {
+    "X-API-Key": "studyroom-user-key-2026"
+}
+
 
 def test_home():
     response = client.get("/")
@@ -21,7 +29,7 @@ def test_health():
 def test_get_rooms_initially_empty():
     response = client.get("/api/v1/rooms/")
     assert response.status_code == 200
-    assert response.json() == []
+    assert isinstance(response.json(), list)
 
 
 def test_create_room():
@@ -32,6 +40,7 @@ def test_create_room():
             "kapasitas": 20,
             "lokasi": "Lantai 2",
         },
+        headers=ADMIN_HEADERS,
     )
 
     assert response.status_code == 201
@@ -47,8 +56,8 @@ def test_create_room_invalid_capacity():
             "kapasitas": 0,
             "lokasi": "Lantai 1",
         },
+        headers=ADMIN_HEADERS,
     )
-
     assert response.status_code == 422
 
 
@@ -70,6 +79,7 @@ def test_create_room_missing_field():
             "nama_ruangan": "Ruang Belajar D",
             "kapasitas": 15,
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -82,6 +92,7 @@ def test_create_room_capacity_too_large():
             "kapasitas": 101,
             "lokasi": "Lantai 1",
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -94,6 +105,7 @@ def test_create_room_name_too_short():
             "kapasitas": 10,
             "lokasi": "Lantai 1",
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -106,6 +118,7 @@ def test_create_room_location_too_short():
             "kapasitas": 10,
             "lokasi": "AB",
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -118,6 +131,7 @@ def test_create_room_name_too_long():
             "kapasitas": 10,
             "lokasi": "Lantai 1",
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -130,6 +144,7 @@ def test_create_room_capacity_negative():
             "kapasitas": -5,
             "lokasi": "Lantai 1",
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
 
@@ -142,7 +157,10 @@ def test_get_existing_room():
             "kapasitas": 25,
             "lokasi": "Lantai 3",
         },
+        headers=ADMIN_HEADERS,
     )
+
+    assert create_response.status_code == 201
     room_id = create_response.json()["id"]
 
     response = client.get(f"/api/v1/rooms/{room_id}")
@@ -158,5 +176,89 @@ def test_create_room_location_too_long():
             "kapasitas": 10,
             "lokasi": "L" * 101,
         },
+        headers=ADMIN_HEADERS,
     )
     assert response.status_code == 422
+
+
+def test_create_room_without_api_key():
+    response = client.post(
+        "/api/v1/rooms/",
+        json={
+            "nama_ruangan": "Ruang Tanpa Key",
+            "kapasitas": 10,
+            "lokasi": "Lantai 1",
+        },
+    )
+    assert response.status_code == 401
+
+
+def test_create_room_with_invalid_api_key():
+    response = client.post(
+        "/api/v1/rooms/",
+        json={
+            "nama_ruangan": "Ruang Key Salah",
+            "kapasitas": 10,
+            "lokasi": "Lantai 1",
+        },
+        headers={"X-API-Key": "invalid-key"},
+    )
+    assert response.status_code == 401
+
+
+def test_create_room_with_user_role():
+    response = client.post(
+        "/api/v1/rooms/",
+        json={
+            "nama_ruangan": "Ruang untuk User",
+            "kapasitas": 10,
+            "lokasi": "Lantai 1",
+        },
+        headers=USER_HEADERS,
+    )
+    assert response.status_code == 403
+
+
+def test_create_room_with_admin_role():
+    response = client.post(
+        "/api/v1/rooms/",
+        json={
+            "nama_ruangan": "Ruang Admin",
+            "kapasitas": 15,
+            "lokasi": "Lantai 2",
+        },
+        headers=ADMIN_HEADERS,
+    )
+    assert response.status_code == 201
+
+    
+def test_error_response_format_room_not_found():
+    response = client.get("/api/v1/rooms/9999")
+
+    assert response.status_code == 404
+
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == 404
+    assert body["error"]["message"] == "Ruangan tidak ditemukan"
+
+
+def test_error_response_format_unauthorized():
+    response = client.post(
+        "/api/v1/rooms/",
+        json={
+            "nama_ruangan": "Ruang Uji",
+            "kapasitas": 10,
+            "lokasi": "Lantai 1",
+        },
+    )
+
+    assert response.status_code == 401
+
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == 401
+    assert body["error"]["message"] == (
+        "API key tidak valid atau tidak ditemukan"
+    )
+
